@@ -1,31 +1,47 @@
-# airtable.py
-
-import datetime
-import json
-import secrets
-from fastapi import Request, HTTPException
-from fastapi.responses import HTMLResponse
-import httpx
 import asyncio
 import base64
 import hashlib
+import json
+import secrets
+from urllib.parse import urlencode
 
+import httpx
 import requests
+from fastapi import HTTPException, Request
+from fastapi.responses import HTMLResponse
+
+from config import get_settings
 from integrations.integration_item import IntegrationItem
+from redis_client import (
+    add_key_value_redis,
+    delete_key_redis,
+    get_value_redis,
+)
 
-from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
+AIRTABLE_AUTHORIZATION_URL = 'https://airtable.com/oauth2/v1/authorize'
+AIRTABLE_SCOPE = (
+    'data.records:read data.records:write '
+    'data.recordComments:read data.recordComments:write '
+    'schema.bases:read schema.bases:write'
+)
 
-# CLIENT_ID = 'XXX'
-# CLIENT_SECRET = 'XXX'
-CLIENT_ID = '329147ef-ac8b-4863-bced-77b7b195258f'
-CLIENT_SECRET = 'e59aec7edddef2edf4388ef611b151ab5fc85c61f828df909c147085e8ffb4f1'
-REDIRECT_URI = 'http://localhost:8000/integrations/airtable/oauth2callback'
-authorization_url = f'https://airtable.com/oauth2/v1/authorize?client_id={CLIENT_ID}&response_type=code&owner=user&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fintegrations%2Fairtable%2Foauth2callback'
 
-encoded_client_id_secret = base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode()
-scope = 'data.records:read data.records:write data.recordComments:read data.recordComments:write schema.bases:read schema.bases:write'
+def _get_airtable_settings():
+    settings = get_settings()
+    if not settings.airtable_client_id or not settings.airtable_client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                'Airtable OAuth is not configured. Set AIRTABLE_CLIENT_ID '
+                'and AIRTABLE_CLIENT_SECRET.'
+            ),
+        )
+
+    return settings
+
 
 async def authorize_airtable(user_id, org_id):
+    settings = _get_airtable_settings()
     state_data = {
         'state': secrets.token_urlsafe(32),
         'user_id': user_id,
@@ -38,7 +54,17 @@ async def authorize_airtable(user_id, org_id):
     m.update(code_verifier.encode('utf-8'))
     code_challenge = base64.urlsafe_b64encode(m.digest()).decode('utf-8').replace('=', '')
 
-    auth_url = f'{authorization_url}&state={encoded_state}&code_challenge={code_challenge}&code_challenge_method=S256&scope={scope}'
+    authorization_params = {
+        'client_id': settings.airtable_client_id,
+        'response_type': 'code',
+        'owner': 'user',
+        'redirect_uri': settings.airtable_redirect_uri,
+        'state': encoded_state,
+        'code_challenge': code_challenge,
+        'code_challenge_method': 'S256',
+        'scope': AIRTABLE_SCOPE,
+    }
+    auth_url = f'{AIRTABLE_AUTHORIZATION_URL}?{urlencode(authorization_params)}'
     await asyncio.gather(
         add_key_value_redis(f'airtable_state:{org_id}:{user_id}', json.dumps(state_data), expire=600),
         add_key_value_redis(f'airtable_verifier:{org_id}:{user_id}', code_verifier, expire=600),
@@ -65,6 +91,11 @@ async def oauth2callback_airtable(request: Request):
     if not saved_state or original_state != json.loads(saved_state).get('state'):
         raise HTTPException(status_code=400, detail='State does not match.')
 
+    settings = _get_airtable_settings()
+    encoded_client_id_secret = base64.b64encode(
+        f'{settings.airtable_client_id}:{settings.airtable_client_secret}'.encode()
+    ).decode()
+
     async with httpx.AsyncClient() as client:
         response, _, _ = await asyncio.gather(
             client.post(
@@ -72,8 +103,8 @@ async def oauth2callback_airtable(request: Request):
                 data={
                     'grant_type': 'authorization_code',
                     'code': code,
-                    'redirect_uri': REDIRECT_URI,
-                    'client_id': CLIENT_ID,
+                    'redirect_uri': settings.airtable_redirect_uri,
+                    'client_id': settings.airtable_client_id,
                     'code_verifier': code_verifier.decode('utf-8'),
                 },
                 headers={

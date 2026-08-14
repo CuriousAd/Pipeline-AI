@@ -1,0 +1,7 @@
+fastapi==0.94.0
+httpx==0.24.1
+python-dotenv==1.0.0
+python-multipart==0.0.6
+redis==4.6.0
+requests==2.28.2
+uvicorn==0.21.0
