@@ -20,7 +20,6 @@ export const NotionIntegration = ({ user, org, integrationParams, setIntegration
             formData.append('user_id', user);
             formData.append('org_id', org);
             const response = await axios.post(`http://localhost:8000/integrations/notion/authorize`, formData);
-            console.log(response);
             const authURL = response?.data;
 
             const newWindow = window.open(authURL, 'Notion Authorization', 'width=600, height=600');
@@ -60,7 +59,7 @@ export const NotionIntegration = ({ user, org, integrationParams, setIntegration
 
     useEffect(() => {
         setIsConnected(integrationParams?.credentials ? true : false)
-    }, []);
+    }, [integrationParams?.credentials]);
 
     return (
         <>

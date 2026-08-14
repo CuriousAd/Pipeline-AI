@@ -59,7 +59,7 @@ export const AirtableIntegration = ({ user, org, integrationParams, setIntegrati
 
     useEffect(() => {
         setIsConnected(integrationParams?.credentials ? true : false)
-    }, []);
+    }, [integrationParams?.credentials]);
 
     return (
         <>

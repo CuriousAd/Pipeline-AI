@@ -5,12 +5,14 @@ import {
     TextField,
 } from '@mui/material';
 import { AirtableIntegration } from './integrations/airtable';
+import { HubSpotIntegration } from './integrations/hubspot';
 import { NotionIntegration } from './integrations/notion';
 import { DataForm } from './data-form';
 
 const integrationMapping = {
     'Notion': NotionIntegration,
     'Airtable': AirtableIntegration,
+    'HubSpot': HubSpotIntegration,
 };
 
 export const IntegrationForm = () => {
@@ -40,7 +42,10 @@ export const IntegrationForm = () => {
             options={Object.keys(integrationMapping)}
             sx={{ width: 300, mt: 2 }}
             renderInput={(params) => <TextField {...params} label="Integration Type" />}
-            onChange={(e, value) => setCurrType(value)}
+            onChange={(e, value) => {
+                setCurrType(value);
+                setIntegrationParams({});
+            }}
         />
         </Box>
         {currType && 
